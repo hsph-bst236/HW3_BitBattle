@@ -1,0 +1,124 @@
+name: Fetch Performance Data
+
+on:
+  workflow_dispatch:  # Manual trigger
+  schedule:
+    - cron: '0 0 * * 0'  # Run weekly on Sundays at midnight
+
+jobs:
+  fetch-performance:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed for pushing changes
+      repository-projects: read  # Needed for reading other repositories
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PyGithub
+
+      - name: Fetch performance data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - << 'EOF'
+          import os
+          import json
+          import re
+          from github import Github
+          
+          # Initialize GitHub client
+          g = Github(os.environ['GITHUB_TOKEN'])
+          org_name = "${{ github.repository_owner }}"
+          
+          # Get all repositories that start with "homework-3-"
+          repos = [repo for repo in g.get_user().get_repos() if repo.name.startswith("homework-3-")]
+          if not repos:
+              print("No repositories found with prefix 'homework-3-'")
+          
+          performance_data = []
+          
+          for repo in repos:
+              print(f"Processing repository: {repo.name}")
+              
+              # Check if the repository has the test workflow
+              try:
+                  workflow_runs = repo.get_workflow_runs(workflow_id="test-calculate-temp-r.yml")
+                  latest_run = next(iter(workflow_runs), None)
+                  
+                  if latest_run and latest_run.conclusion == "success":
+                      # Get the logs from the run
+                      log_url = latest_run.logs_url
+                      logs = g.get_repo(repo.full_name).get_workflow_run(latest_run.id).get_logs().decoded_content.decode('utf-8')
+                      
+                      # Extract runtime from logs
+                      runtime_match = re.search(r"Rscript calculate_Temp\.R ran in ([\d.]+) seconds", logs)
+                      if runtime_match:
+                          runtime = float(runtime_match.group(1))
+                          performance_data.append({
+                              "repository": repo.name,
+                              "runtime": runtime
+                          })
+                          print(f"Found runtime: {runtime} seconds")
+                      else:
+                          print(f"Could not find runtime information in logs for {repo.name}")
+                  else:
+                      print(f"No successful test runs found for {repo.name}")
+              except Exception as e:
+                  print(f"Error processing {repo.name}: {str(e)}")
+          
+          # Sort data by runtime (fastest to slowest)
+          performance_data.sort(key=lambda x: x["runtime"])
+          
+          # Save to JSON file
+          with open('performance_data.json', 'w') as f:
+              json.dump(performance_data, f, indent=2)
+          
+          # Update README.md
+          readme_content = ""
+          if os.path.exists('README.md'):
+              with open('README.md', 'r') as f:
+                  readme_content = f.read()
+          
+          # Create performance table
+          performance_table = "## Performance Results\n\n"
+          performance_table += "| Rank | Repository | Runtime (seconds) |\n"
+          performance_table += "|------|------------|------------------|\n"
+          
+          for i, data in enumerate(performance_data, 1):
+              performance_table += f"| {i} | {data['repository']} | {data['runtime']:.4f} |\n"
+          
+          # Check if README already has a performance section
+          if "## Performance Results" in readme_content:
+              # Replace existing section
+              readme_content = re.sub(
+                  r"## Performance Results\n\n[\s\S]*?(?=\n##|$)",
+                  performance_table,
+                  readme_content
+              )
+          else:
+              # Append performance section
+              readme_content += "\n\n" + performance_table
+          
+          with open('README.md', 'w') as f:
+              f.write(readme_content)
+          
+          print(f"Processed {len(performance_data)} repositories with successful test runs")
+          EOF
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add performance_data.json README.md
+          git commit -m "Update performance data [skip ci]" || echo "No changes to commit"
+          git push 

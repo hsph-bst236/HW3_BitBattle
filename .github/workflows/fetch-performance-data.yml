@@ -10,7 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write  # Needed for pushing changes
-      repository-projects: read  # Needed for reading other repositories
 
     steps:
       - name: Checkout repository
@@ -24,57 +23,74 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install PyGithub
+          pip install PyGithub requests
 
       - name: Fetch performance data
         env:
+          # Use a Personal Access Token with organization access
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python - << 'EOF'
           import os
           import json
           import re
+          import requests
           from github import Github
           
-          # Initialize GitHub client
-          g = Github(os.environ['GITHUB_TOKEN'])
-          org_name = "${{ github.repository_owner }}"
+          # Initialize GitHub client with organization access
+          token = os.environ['GITHUB_TOKEN']
+          g = Github(token)
+          org_name = "hsph-bst236"  # The organization name
           
-          # Get all repositories that start with "homework-3-"
-          repos = [repo for repo in g.get_user().get_repos() if repo.name.startswith("homework-3-")]
-          if not repos:
-              print("No repositories found with prefix 'homework-3-'")
-          
-          performance_data = []
-          
-          for repo in repos:
-              print(f"Processing repository: {repo.name}")
+          try:
+              # Get the organization
+              org = g.get_organization(org_name)
               
-              # Check if the repository has the test workflow
-              try:
-                  workflow_runs = repo.get_workflow_runs(workflow_id="test-calculate-temp-r.yml")
-                  latest_run = next(iter(workflow_runs), None)
+              # Get repositories in the organization with the prefix
+              repos = [repo for repo in org.get_repos() if repo.name.startswith("homework-3-")]
+              
+              if not repos:
+                  print(f"No repositories found with prefix 'homework-3-' in the {org_name} organization")
+                  exit(0)
                   
-                  if latest_run and latest_run.conclusion == "success":
-                      # Get the logs from the run
-                      log_url = latest_run.logs_url
-                      logs = g.get_repo(repo.full_name).get_workflow_run(latest_run.id).get_logs().decoded_content.decode('utf-8')
+              print(f"Found {len(repos)} repositories with prefix 'homework-3-' in the {org_name} organization")
+              
+              performance_data = []
+              
+              for repo in repos:
+                  repo_name = repo.name
+                  print(f"Processing repository: {repo_name}")
+                  
+                  # Check if the repository has the test workflow
+                  try:
+                      workflow_runs = repo.get_workflow_runs(workflow_id="test-calculate-temp-r.yml")
+                      latest_run = next(iter(workflow_runs), None)
                       
-                      # Extract runtime from logs
-                      runtime_match = re.search(r"Rscript calculate_Temp\.R ran in ([\d.]+) seconds", logs)
-                      if runtime_match:
-                          runtime = float(runtime_match.group(1))
-                          performance_data.append({
-                              "repository": repo.name,
-                              "runtime": runtime
-                          })
-                          print(f"Found runtime: {runtime} seconds")
+                      if latest_run and latest_run.conclusion == "success":
+                          # Get the logs from the run
+                          logs = latest_run.download_logs().decode('utf-8')
+                          
+                          # Extract runtime from logs
+                          runtime_match = re.search(r"Rscript calculate_Temp\.R ran in ([\d.]+) seconds", logs)
+                          if runtime_match:
+                              runtime = float(runtime_match.group(1))
+                              performance_data.append({
+                                  "repository": repo_name,
+                                  "runtime": runtime,
+                                  "url": repo.html_url
+                              })
+                              print(f"Found runtime: {runtime} seconds")
+                          else:
+                              print(f"Could not find runtime information in logs for {repo_name}")
                       else:
-                          print(f"Could not find runtime information in logs for {repo.name}")
-                  else:
-                      print(f"No successful test runs found for {repo.name}")
-              except Exception as e:
-                  print(f"Error processing {repo.name}: {str(e)}")
+                          status = latest_run.conclusion if latest_run else "No runs found"
+                          print(f"No successful test runs found for {repo_name}. Status: {status}")
+                  except Exception as e:
+                      print(f"Error processing {repo_name}: {str(e)}")
+          
+          except Exception as e:
+              print(f"Error accessing organization {org_name}: {str(e)}")
+              exit(1)
           
           # Sort data by runtime (fastest to slowest)
           performance_data.sort(key=lambda x: x["runtime"])
@@ -95,7 +111,10 @@ jobs:
           performance_table += "|------|------------|------------------|\n"
           
           for i, data in enumerate(performance_data, 1):
-              performance_table += f"| {i} | {data['repository']} | {data['runtime']:.4f} |\n"
+              repo_name = data['repository']
+              repo_url = data['url']
+              runtime = data['runtime']
+              performance_table += f"| {i} | [{repo_name}]({repo_url}) | {runtime:.4f} |\n"
           
           # Check if README already has a performance section
           if "## Performance Results" in readme_content:
@@ -113,6 +132,7 @@ jobs:
               f.write(readme_content)
           
           print(f"Processed {len(performance_data)} repositories with successful test runs")
+          print("Performance data has been saved to performance_data.json and README.md has been updated.")
           EOF
 
       - name: Commit and push changes

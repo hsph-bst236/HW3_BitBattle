@@ -69,9 +69,14 @@ jobs:
               # Only collect runtime values
               runtime_data = []
               
+              # Create a mapping for anonymizing repo names
+              repo_mapping = {repo.name: f"Repo {i+1}" for i, repo in enumerate(repos)}
+              
               for repo in repos:
                   repo_name = repo.name
-                  print(f"Processing repository: {repo_name}")
+                  # Use anonymized name in logs
+                  anon_name = repo_mapping[repo_name]
+                  print(f"Processing repository: {anon_name}")
                   
                   # Check if the repository has the test workflow
                   try:
@@ -87,7 +92,7 @@ jobs:
                               break
                       
                       if not test_workflow:
-                          print(f"Could not find test-calculate-temp-r.yml workflow in {repo_name}")
+                          print(f"Could not find test-calculate-temp-r.yml workflow in {anon_name}")
                           continue
                           
                       # Now get the workflow runs for this specific workflow
@@ -95,7 +100,7 @@ jobs:
                       latest_run = workflow_runs[0] if workflow_runs else None
                       
                       if latest_run and latest_run.conclusion == "success":
-                          print(f"Found successful test run for {repo_name}")
+                          print(f"Found successful test run for {anon_name}")
                           
                           # Use the runs API to get the logs
                           headers = {
@@ -137,16 +142,16 @@ jobs:
                                   runtime = float(runtime_match.group(1))
                                   # Only store the runtime value
                                   runtime_data.append(runtime)
-                                  print(f"Found runtime: {runtime} seconds")
+                                  print(f"Found runtime: {runtime:.4f} seconds")
                               else:
-                                  print(f"Could not find runtime information in logs for {repo_name}")
+                                  print(f"Could not find runtime information in logs for {anon_name}")
                           else:
-                              print(f"Failed to download logs for {repo_name}: HTTP {logs_response.status_code}")
+                              print(f"Failed to download logs for {anon_name}: HTTP {logs_response.status_code}")
                       else:
                           status = latest_run.conclusion if latest_run else "No runs found"
-                          print(f"No successful test runs found for {repo_name}. Status: {status}")
+                          print(f"No successful test runs found for {anon_name}. Status: {status}")
                   except Exception as e:
-                      print(f"Error processing {repo_name}: {str(e)}")
+                      print(f"Error processing {anon_name}: {str(e)}")
           
           except Exception as e:
               print(f"Error accessing organization {org_name}: {str(e)}")

@@ -28,7 +28,8 @@ jobs:
       - name: Fetch performance data
         env:
           # Use a Personal Access Token with organization access
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # You need to create this token with 'repo' and 'read:org' scopes
+          GITHUB_PAT: ${{ secrets.ORG_ACCESS_TOKEN }}
         run: |
           python - << 'EOF'
           import os
@@ -38,13 +39,24 @@ jobs:
           from github import Github
           
           # Initialize GitHub client with organization access
-          token = os.environ['GITHUB_TOKEN']
+          # Using PAT instead of default GITHUB_TOKEN
+          token = os.environ['GITHUB_PAT']  # Changed from GITHUB_TOKEN to GITHUB_PAT
+          if not token:
+              print("Error: ORG_ACCESS_TOKEN not set. Please add this secret to your repository.")
+              exit(1)
+              
           g = Github(token)
           org_name = "hsph-bst236"  # The organization name
           
           try:
               # Get the organization
               org = g.get_organization(org_name)
+              print(f"Successfully accessed organization: {org_name}")
+              
+              # List all repositories to debug
+              all_repos = list(org.get_repos())
+              print(f"Total repositories in organization: {len(all_repos)}")
+              print(f"All repository names: {', '.join([r.name for r in all_repos])}")
               
               # Get repositories in the organization with the prefix
               repos = [repo for repo in org.get_repos() if repo.name.startswith("homework-3-")]

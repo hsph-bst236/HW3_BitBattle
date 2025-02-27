@@ -66,7 +66,8 @@ jobs:
                   
               print(f"Found {len(repos)} repositories with prefix 'homework-3-' in the {org_name} organization")
               
-              performance_data = []
+              # Only collect runtime values
+              runtime_data = []
               
               for repo in repos:
                   repo_name = repo.name
@@ -134,11 +135,8 @@ jobs:
                               runtime_match = re.search(r"Rscript calculate_Temp\.R ran in ([\d.]+) seconds", log_content)
                               if runtime_match:
                                   runtime = float(runtime_match.group(1))
-                                  performance_data.append({
-                                      "repository": repo_name,
-                                      "runtime": runtime,
-                                      "url": repo.html_url
-                                  })
+                                  # Only store the runtime value
+                                  runtime_data.append(runtime)
                                   print(f"Found runtime: {runtime} seconds")
                               else:
                                   print(f"Could not find runtime information in logs for {repo_name}")
@@ -155,11 +153,11 @@ jobs:
               exit(1)
           
           # Sort data by runtime (fastest to slowest)
-          performance_data.sort(key=lambda x: x["runtime"])
+          runtime_data.sort()
           
           # Save to JSON file
           with open('performance_data.json', 'w') as f:
-              json.dump(performance_data, f, indent=2)
+              json.dump({"runtimes": runtime_data}, f, indent=2)
           
           # Update README.md
           readme_content = ""
@@ -169,14 +167,11 @@ jobs:
           
           # Create performance table
           performance_table = "## Performance Results\n\n"
-          performance_table += "| Rank | Repository | Runtime (seconds) |\n"
-          performance_table += "|------|------------|------------------|\n"
+          performance_table += "| Rank | Runtime (seconds) |\n"
+          performance_table += "|------|------------------|\n"
           
-          for i, data in enumerate(performance_data, 1):
-              repo_name = data['repository']
-              repo_url = data['url']
-              runtime = data['runtime']
-              performance_table += f"| {i} | [{repo_name}]({repo_url}) | {runtime:.4f} |\n"
+          for i, runtime in enumerate(runtime_data, 1):
+              performance_table += f"| {i} | {runtime:.4f} |\n"
           
           # Check if README already has a performance section
           if "## Performance Results" in readme_content:
@@ -193,7 +188,7 @@ jobs:
           with open('README.md', 'w') as f:
               f.write(readme_content)
           
-          print(f"Processed {len(performance_data)} repositories with successful test runs")
+          print(f"Processed {len(runtime_data)} successful test runs with runtime data")
           print("Performance data has been saved to performance_data.json and README.md has been updated.")
           EOF
 

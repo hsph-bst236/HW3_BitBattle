@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install PyGithub requests
+          pip install PyGithub requests pytz
 
       - name: Fetch performance data
         env:
@@ -37,6 +37,7 @@ jobs:
           import re
           import requests
           import datetime
+          import pytz
           from github import Github
           
           # Initialize GitHub client with organization access
@@ -161,12 +162,20 @@ jobs:
           # Sort data by runtime (fastest to slowest)
           runtime_data.sort()
           
-          # Save to JSON file
-          with open('performance_data.json', 'w') as f:
-              json.dump({"runtimes": runtime_data, "timestamp": datetime.datetime.now().isoformat()}, f, indent=2)
+          # Get current time in UTC
+          utc_now = datetime.datetime.now(datetime.timezone.utc)
           
-          # Get current timestamp for README
-          current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+          # Convert to Eastern Time
+          eastern = pytz.timezone('US/Eastern')
+          eastern_time = utc_now.astimezone(eastern)
+          
+          # Format time strings
+          iso_time = eastern_time.isoformat()
+          formatted_time = eastern_time.strftime("%Y-%m-%d %H:%M:%S %Z")
+          
+          # Save to JSON file with Eastern Time timestamp
+          with open('performance_data.json', 'w') as f:
+              json.dump({"runtimes": runtime_data, "timestamp": iso_time}, f, indent=2)
           
           # Update README.md
           readme_content = ""
@@ -174,9 +183,9 @@ jobs:
               with open('README.md', 'r') as f:
                   readme_content = f.read()
           
-          # Create performance table with timestamp
+          # Create performance table with timestamp in Eastern Time
           performance_table = f"## Performance Results\n\n"
-          performance_table += f"*Last updated: {current_time}*\n\n"
+          performance_table += f"*Last updated: {formatted_time}*\n\n"
           performance_table += "| Rank | Runtime (seconds) |\n"
           performance_table += "|------|------------------|\n"
           
@@ -199,7 +208,7 @@ jobs:
               f.write(readme_content)
           
           print(f"Processed {len(runtime_data)} successful test runs with runtime data")
-          print(f"Performance data has been saved to performance_data.json and README.md has been updated at {current_time}")
+          print(f"Performance data has been saved to performance_data.json and README.md has been updated at {formatted_time}")
           EOF
 
       - name: Commit and push changes

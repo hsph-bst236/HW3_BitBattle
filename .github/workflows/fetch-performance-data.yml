@@ -36,6 +36,7 @@ jobs:
           import json
           import re
           import requests
+          import datetime
           from github import Github
           
           # Initialize GitHub client with organization access
@@ -162,7 +163,10 @@ jobs:
           
           # Save to JSON file
           with open('performance_data.json', 'w') as f:
-              json.dump({"runtimes": runtime_data}, f, indent=2)
+              json.dump({"runtimes": runtime_data, "timestamp": datetime.datetime.now().isoformat()}, f, indent=2)
+          
+          # Get current timestamp for README
+          current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
           
           # Update README.md
           readme_content = ""
@@ -170,8 +174,9 @@ jobs:
               with open('README.md', 'r') as f:
                   readme_content = f.read()
           
-          # Create performance table
-          performance_table = "## Performance Results\n\n"
+          # Create performance table with timestamp
+          performance_table = f"## Performance Results\n\n"
+          performance_table += f"*Last updated: {current_time}*\n\n"
           performance_table += "| Rank | Runtime (seconds) |\n"
           performance_table += "|------|------------------|\n"
           
@@ -194,7 +199,7 @@ jobs:
               f.write(readme_content)
           
           print(f"Processed {len(runtime_data)} successful test runs with runtime data")
-          print("Performance data has been saved to performance_data.json and README.md has been updated.")
+          print(f"Performance data has been saved to performance_data.json and README.md has been updated at {current_time}")
           EOF
 
       - name: Commit and push changes

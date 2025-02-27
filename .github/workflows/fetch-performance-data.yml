@@ -56,7 +56,6 @@ jobs:
               # List all repositories to debug
               all_repos = list(org.get_repos())
               print(f"Total repositories in organization: {len(all_repos)}")
-              print(f"All repository names: {', '.join([r.name for r in all_repos])}")
               
               # Get repositories in the organization with the prefix
               repos = [repo for repo in org.get_repos() if repo.name.startswith("homework-3-")]
@@ -75,25 +74,76 @@ jobs:
                   
                   # Check if the repository has the test workflow
                   try:
-                      workflow_runs = repo.get_workflow_runs(workflow_id="test-calculate-temp-r.yml")
-                      latest_run = next(iter(workflow_runs), None)
+                      # First get all workflows in the repository
+                      workflows = list(repo.get_workflows())
+                      test_workflow = None
+                      
+                      # Find the test-calculate-temp-r.yml workflow
+                      for workflow in workflows:
+                          print(f"Found workflow: {workflow.name} ({workflow.path})")
+                          if workflow.name == "Test Calculate Temp R" or workflow.path.endswith("test-calculate-temp-r.yml"):
+                              test_workflow = workflow
+                              break
+                      
+                      if not test_workflow:
+                          print(f"Could not find test-calculate-temp-r.yml workflow in {repo_name}")
+                          continue
+                          
+                      # Now get the workflow runs for this specific workflow
+                      workflow_runs = list(test_workflow.get_runs())
+                      latest_run = workflow_runs[0] if workflow_runs else None
                       
                       if latest_run and latest_run.conclusion == "success":
-                          # Get the logs from the run
-                          logs = latest_run.download_logs().decode('utf-8')
+                          print(f"Found successful test run for {repo_name}")
                           
-                          # Extract runtime from logs
-                          runtime_match = re.search(r"Rscript calculate_Temp\.R ran in ([\d.]+) seconds", logs)
-                          if runtime_match:
-                              runtime = float(runtime_match.group(1))
-                              performance_data.append({
-                                  "repository": repo_name,
-                                  "runtime": runtime,
-                                  "url": repo.html_url
-                              })
-                              print(f"Found runtime: {runtime} seconds")
+                          # Use the runs API to get the logs
+                          headers = {
+                              'Authorization': f'token {token}',
+                              'Accept': 'application/vnd.github.v3+json'
+                          }
+                          
+                          # Get logs URL (which is likely a redirect to a download)
+                          logs_url = latest_run.logs_url
+                          logs_response = requests.get(logs_url, headers=headers, allow_redirects=True)
+                          
+                          if logs_response.status_code == 200:
+                              # Save logs to temporary file and parse
+                              with open('temp_logs.zip', 'wb') as f:
+                                  f.write(logs_response.content)
+                              
+                              # Extract and read logs
+                              import zipfile
+                              import io
+                              
+                              log_content = ""
+                              with zipfile.ZipFile('temp_logs.zip', 'r') as zip_ref:
+                                  # Find and read all text files in the zip
+                                  for file_info in zip_ref.infolist():
+                                      if not file_info.is_dir():
+                                          with zip_ref.open(file_info) as f:
+                                              try:
+                                                  log_content += f.read().decode('utf-8') + "\n"
+                                              except UnicodeDecodeError:
+                                                  # Skip binary files
+                                                  pass
+                              
+                              # Clean up temp file
+                              os.remove('temp_logs.zip')
+                              
+                              # Extract runtime from logs
+                              runtime_match = re.search(r"Rscript calculate_Temp\.R ran in ([\d.]+) seconds", log_content)
+                              if runtime_match:
+                                  runtime = float(runtime_match.group(1))
+                                  performance_data.append({
+                                      "repository": repo_name,
+                                      "runtime": runtime,
+                                      "url": repo.html_url
+                                  })
+                                  print(f"Found runtime: {runtime} seconds")
+                              else:
+                                  print(f"Could not find runtime information in logs for {repo_name}")
                           else:
-                              print(f"Could not find runtime information in logs for {repo_name}")
+                              print(f"Failed to download logs for {repo_name}: HTTP {logs_response.status_code}")
                       else:
                           status = latest_run.conclusion if latest_run else "No runs found"
                           print(f"No successful test runs found for {repo_name}. Status: {status}")

@@ -1,6 +1,6 @@
 # Homework 3 Bit Battle Leaderboard
 
-
+Check out the winning code in
 
 ## Performance Results
 

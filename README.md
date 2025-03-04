@@ -1,6 +1,6 @@
 # Homework 3 Bit Battle Leaderboard
 
-Check out the winning code in
+Check out the winning code in `calculate_Temp.R`
 
 ## Performance Results
 
